@@ -3,21 +3,18 @@
 namespace Database\Seeders;
 
 use App\Models\User;
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        User::factory()->create([
+        // Test user: email test@ultrapay.local, password Ultra@2026, PIN 4826
+        $user = User::factory()->create([
             'name' => 'Test User',
-            'email' => 'test@example.com',
+            'mobile' => '9876543210',
+            'email' => 'test@ultrapay.local',
         ]);
+        $user->update(['hd_index' => $user->id]);
     }
 }
