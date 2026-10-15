@@ -27,6 +27,7 @@ class User extends Authenticatable
             'pin' => 'hashed',
             'pin_locked_until' => 'datetime',
             'last_login_at' => 'datetime',
+            'balance' => 'decimal:8',
         ];
     }
 
@@ -68,6 +69,7 @@ class User extends Authenticatable
             'mobile' => $this->mobile,
             'wallet_id' => $this->wallet_id,
             'anb_address' => $this->anb_address,
+            'balance' => $this->balance,
             'referral_code' => $this->referral_code,
             'kyc_status' => $this->kyc_status,
             'status' => $this->status,

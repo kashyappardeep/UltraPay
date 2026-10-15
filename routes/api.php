@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\PasswordController;
 use App\Http\Controllers\Api\PinController;
+use App\Http\Controllers\Api\WalletController;
 use App\Http\Middleware\ForceJsonResponse;
 use Illuminate\Support\Facades\Route;
 
@@ -28,5 +29,12 @@ Route::middleware(ForceJsonResponse::class)->group(function () {
 
         Route::post('/pin/verify', [PinController::class, 'verify'])->middleware('throttle:10,1');
         Route::post('/pin/change', [PinController::class, 'change'])->middleware('throttle:5,1');
-    });
-});
+
+        // Wallet + Add fund
+        Route::get('/wallet', [WalletController::class, 'wallet']);
+        Route::post('/deposit', [WalletController::class, 'createDeposit'])->middleware('throttle:10,1');
+        Route::get('/deposit/{id}', [WalletController::class, 'showDeposit'])->whereNumber('id');
+        Route::get('/deposits', [WalletController::class, 'deposits']);
+    });   // <- auth:sanctum group yahan band
+
+});   // <- ForceJson group yahan band

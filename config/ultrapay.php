@@ -21,4 +21,21 @@ return [
     'pin_length' => 4,
     'pin_max_attempts' => 5,
     'pin_lock_minutes' => 30,
+
+
+     // ANB deposit (EVM chain: BSC / Ethereum / Polygon)
+    'anb' => [
+        'network' => env('ANB_NETWORK', 'BNB Smart Chain (BEP-20)'),
+                'chain_id' => (int) env('ANB_CHAIN_ID', 56),          // BSC = 56
+        'rpc_url' => env('ANB_RPC_URL', 'https://bsc-dataseed.bnbchain.org'),
+        'token_contract' => strtolower((string) env('ANB_TOKEN_CONTRACT', '0x385FC4e0520Eec19eF3B8df45f46C3Ec4a0Bf61a')),
+        'company_address' => strtolower((string) env('ANB_COMPANY_ADDRESS', '0x01303dd0Ecfb4D7Efa4eb3E66Aa26dDd8F6cf556')),
+        'decimals' => (int) env('ANB_DECIMALS', 18),
+        'confirmations' => (int) env('ANB_CONFIRMATIONS', 15),
+        'start_block' => env('ANB_START_BLOCK'),
+        'block_chunk' => (int) env('ANB_BLOCK_CHUNK', 500),
+        'min_deposit' => (float) env('ANB_MIN_DEPOSIT', 1),
+                'deposit_expiry_minutes' => (int) env('ANB_DEPOSIT_TIMER_MINUTES', 15), // app mein timer
+        'match_window_hours' => 24,
+    ],
 ];
