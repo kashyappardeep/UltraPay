@@ -26,7 +26,8 @@ class RateController extends Controller
         ]);
 
         $rate = CoinRate::current();
-        if (! $rate) {
+        $inrRate = $rate?->inr_rate;
+        if ($inrRate === null || $inrRate === '' || $inrRate === 0 || $inrRate === '0') {
             return $this->fail('ANB ka rate abhi set nahi hua hai.', 503);
         }
 

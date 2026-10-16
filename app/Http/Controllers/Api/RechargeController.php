@@ -43,7 +43,8 @@ class RechargeController extends Controller
 
         // 1) Current rate se ANB nikalo
         $rate = CoinRate::current();
-        if (! $rate || (float) $rate->inr_rate <= 0) {
+        $inrRate = $rate?->inr_rate;
+        if ($inrRate === null || $inrRate === '' || $inrRate === 0 || $inrRate === '0') {
             return $this->fail('ANB ka rate abhi set nahi hai. Thodi der baad try karein.', 503);
         }
         $anbAmount = $this->anbForInr((string) $data['amount'], (string) $rate->inr_rate);

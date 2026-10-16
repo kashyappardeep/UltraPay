@@ -26,8 +26,8 @@ class WalletController extends Controller
         $user = $request->user()->fresh();
         $balance = (string) $user->balance;          // users table se ANB balance
         $withdrawable = (string) $user->withdrawal_balance;
-        $rate = CoinRate::current(); 
-        $usdtbalance =$balance * $rate->usdt_inr;                // coin_rates table se current rate
+        $rate = CoinRate::current();                             // coin_rates table se current rate (null ho sakta hai)
+        $usdtbalance = $rate ? $rate->anbToUsdt($balance) : null; // ANB value USDT mein
 
         $txns = WalletTransaction::where('user_id', $user->id)
             ->latest('id')
