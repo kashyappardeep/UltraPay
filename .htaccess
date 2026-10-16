@@ -1,0 +1,9 @@
+# Sirf "public" folder bahar se khule, baaki sab (.env, storage, vendor) band
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(?!public/) - [F,L]
+</IfModule>
+
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>

@@ -23,11 +23,11 @@ class Recharge extends Model
     ];
 
     protected function casts(): array
-    {
-        return [
-            'amount' => 'decimal:2',
-            'anb_amount' => 'decimal:36,8',
-            'anb_rate' => 'decimal:30,10',
-        ];
-    }
+{
+    return [
+        'anb_amount' => 'decimal:8',
+        'anb_rate' => 'decimal:8',
+        'refunded_at' => 'datetime',
+    ];
+}
 }

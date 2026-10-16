@@ -49,7 +49,8 @@ Route::middleware(ForceJsonResponse::class)->group(function () {
         Route::get('/deposits', [WalletController::class, 'deposits']);
 
         // Recharge
-        Route::post('/recharge', [RechargeController::class, 'store'])->middleware('throttle:10,1');
+       Route::post('/recharge', [RechargeController::class, 'store'])->middleware('throttle:10,1');
+        Route::get('/recharge/{orderId}/status', [RechargeController::class, 'status'])->middleware('throttle:20,1');
     });   // <- auth:sanctum group yahan band
 
 });   // <- ForceJson group yahan band

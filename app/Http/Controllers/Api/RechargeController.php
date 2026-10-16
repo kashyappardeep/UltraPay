@@ -3,54 +3,68 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\CoinRate;
 use App\Models\Recharge;
+use App\Models\User;
+use App\Models\WalletTransaction;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use App\Models\CoinRate;
-use App\Models\User;
-use App\Models\WalletTransaction;
 use RuntimeException;
+use Throwable;
 
+/**
+ * Recharge flow:
+ *  1) ANB balance se "hold" (rok) hota hai, taaki ek saath do recharge se balance minus na ho.
+ *     Is waqt koi history nahi banti, withdrawal_balance nahi badhta.
+ *  2) A1Topup SUCCESS  -> withdrawal_balance + ANB, wallet_transactions mein 1 entry
+ *     A1Topup FAILED   -> roka hua ANB balance mein wapas, koi history nahi
+ *     PENDING/UNKNOWN  -> ANB ruka rahega, status API se final hoga
+ */
 class RechargeController extends Controller
 {
     use ApiResponse;
 
-       public function store(Request $request): JsonResponse
+    private const RECHARGE_URL = 'https://business.a1topup.com/recharge/api';
+    private const STATUS_URL = 'https://business.a1topup.com/recharge/status';
+
+    /** POST /api/recharge */
+    public function store(Request $request): JsonResponse
     {
         abort_unless($request->user()->isActive(), 403, 'This account is not active for recharges.');
 
         $data = $request->validate([
             'order_id' => ['required', 'string', 'alpha_dash', 'min:6', 'max:64'],
             'number' => ['required', 'regex:/^[6-9][0-9]{9}$/'],
-            'circle_code' => ['required', 'string', 'max:50'],
+            'circle_code' => ['nullable', 'string', 'max:50'],   // postpaid mein zaroori nahi
             'operator_code' => ['required', 'string', 'max:50'],
             'amount' => ['required', 'numeric', 'decimal:0,2', 'min:10', 'max:10000'],
         ], [
             'number.regex' => 'Please enter a valid 10-digit mobile number.',
             'amount.decimal' => 'The recharge amount may have no more than 2 decimal places.',
         ]);
+        $data['circle_code'] = $data['circle_code'] ?? null;
 
-        $username = config('ultrapay.a1topup_username');
-        $password = config('ultrapay.a1topup_password');
-        if (! is_string($username) || $username === '' || ! is_string($password) || $password === '') {
+        if (! $this->credentials()) {
             return $this->fail('The recharge service is not configured yet.', 503);
         }
 
         // 1) Current rate se ANB nikalo
         $rate = CoinRate::current();
-        $inrRate = $rate?->inr_rate;
-        if ($inrRate === null || $inrRate === '' || $inrRate === 0 || $inrRate === '0') {
+        $inrRate = $rate ? (string) $rate->getRawOriginal('inr_rate') : '';
+        if (! preg_match('/^\d+(\.\d+)?$/', $inrRate) || (float) $inrRate <= 0) {
             return $this->fail('The ANB rate is not available yet. Please try again later.', 503);
         }
-        $anbAmount = $this->anbForInr((string) $data['amount'], (string) $rate->inr_rate);
+        $anbAmount = $this->anbForInr((string) $data['amount'], $inrRate);
 
+        // 2) ANB hold (sirf balance se rokna). History abhi NAHI.
         try {
-            $recharge = DB::transaction(function () use ($request, $data, $anbAmount, $rate) {
+            $recharge = DB::transaction(function () use ($request, $data, $anbAmount, $inrRate) {
                 $existing = Recharge::query()
                     ->where('order_id', $data['order_id'])
                     ->lockForUpdate()
@@ -64,55 +78,28 @@ class RechargeController extends Controller
 
                 $userId = $request->user()->id;
 
-                // 2) + 3) Balance check aur katna EK hi query mein (race-safe):
-                //    balance - ANB, withdrawal_balance + ANB, sirf tab jab balance >= ANB
+                // Balance check + rokna EK query mein (race-safe)
                 $updated = User::whereKey($userId)
                     ->where('balance', '>=', $anbAmount)
-                    ->update([
-                        'balance' => DB::raw('balance - ' . $anbAmount),
-                        'withdrawal_balance' => DB::raw('withdrawal_balance + ' . $anbAmount),
-                    ]);
+                    ->update(['balance' => DB::raw('balance - ' . $anbAmount)]);
 
                 if ($updated === 0) {
                     throw new RuntimeException('INSUFFICIENT_BALANCE');
                 }
 
-                $user = User::whereKey($userId)->first(['balance', 'withdrawal_balance']);
-
-                $recharge = Recharge::create([
+                return Recharge::create([
                     ...$data,
                     'user_id' => $userId,
                     'status' => 'processing',
                     'anb_amount' => $anbAmount,
-                    'anb_rate' => $rate->inr_rate,
+                    'anb_rate' => $inrRate,
                 ]);
-
-                WalletTransaction::create([
-                    'user_id' => $userId,
-                    'type' => 'recharge',
-                    'wallet' => 'main',
-                    'amount' => '-' . $anbAmount,
-                    'balance_after' => $user->balance,
-                    'reference' => $data['order_id'],
-                    'description' => "Recharge {$data['number']} ₹{$data['amount']}",
-                ]);
-                WalletTransaction::create([
-                    'user_id' => $userId,
-                    'type' => 'recharge',
-                    'wallet' => 'withdrawal',
-                    'amount' => $anbAmount,
-                    'balance_after' => $user->withdrawal_balance,
-                    'reference' => $data['order_id'],
-                    'description' => "Recharge {$data['number']} ₹{$data['amount']}",
-                ]);
-
-                return $recharge;
             });
         } catch (RuntimeException $e) {
             if ($e->getMessage() !== 'INSUFFICIENT_BALANCE') {
                 throw $e;
             }
-            $balance = (string) $request->user()->fresh()->balance;
+            $balance = (string) $request->user()->fresh()->getRawOriginal('balance');
 
             return response()->json([
                 'success' => false,
@@ -137,25 +124,29 @@ class RechargeController extends Controller
             return $this->existingResponse($recharge);
         }
 
-        // 4) Provider ko recharge bhejo
+        // 3) A1Topup ko recharge bhejo
+        [$username, $password] = $this->credentials();
+        $params = [
+            'username' => $username,
+            'pwd' => $password,
+            'operatorcode' => $data['operator_code'],
+            'number' => $data['number'],
+            'amount' => $data['amount'],
+            'orderid' => $data['order_id'],
+            'format' => 'json',
+        ];
+        if (! empty($data['circle_code'])) {
+            $params['circlecode'] = $data['circle_code'];
+        }
+
         try {
             $response = Http::connectTimeout(10)
                 ->timeout(35)
                 ->withOptions(['allow_redirects' => false])
-                ->get('https://business.a1topup.com/recharge/api', [
-                    'username' => $username,
-                    'pwd' => $password,
-                    'circlecode' => $data['circle_code'],
-                    'operatorcode' => $data['operator_code'],
-                    'number' => $data['number'],
-                    'amount' => $data['amount'],
-                    'orderid' => $data['order_id'],
-                    'format' => 'json',
-                ]);
+                ->get(self::RECHARGE_URL, $params);
         } catch (ConnectionException) {
-            // Pata nahi recharge hua ya nahi: ANB ruka rahega, refund NAHI (status check se tay hoga)
-            $recharge->update([
-                'status' => 'unknown',
+            // Pata nahi recharge hua ya nahi: ANB ruka rahega, status API se tay hoga
+            $this->settle($recharge, 'unknown', [
                 'provider_message' => 'Provider response was not received; transaction status is unknown.',
             ]);
 
@@ -164,34 +155,120 @@ class RechargeController extends Controller
 
         $providerData = json_decode($response->body(), true);
         if (! $response->successful() || ! is_array($providerData)) {
-            $recharge->update([
-                'status' => 'unknown',
+            $this->settle($recharge, 'unknown', [
                 'provider_message' => 'Provider response could not confirm the transaction status.',
             ]);
 
             return $this->rechargeResponse($recharge->fresh(), 202);
         }
 
+        // 4) Final hisaab: success = katna pakka, failed = ANB wapas
         $status = $this->providerStatus($providerData);
-        $recharge->update([
-            'status' => $status,
-            'provider_status' => $this->providerStatusValue($providerData),
-            'provider_reference' => $this->providerReference($providerData),
-            'provider_message' => $this->providerMessage($providerData, $status),
-        ]);
+        $this->settle($recharge, $status, $this->providerFields($providerData, $status));
 
-        // 5) Recharge fail: ANB wapas
-        if ($status === 'failed') {
-            $this->refundAnb($recharge);
-        }
+        $fresh = $recharge->fresh();
 
         return $this->rechargeResponse(
-            $recharge->fresh(),
-            in_array($status, ['processing', 'unknown'], true) ? 202 : 200
+            $fresh,
+            in_array($fresh->status, ['processing', 'unknown'], true) ? 202 : 200
         );
     }
 
-        /**
+    /**
+     * GET /api/recharge/{orderId}/status
+     * Pending / unknown recharge ka status A1Topup se check karke final karo.
+     */
+    public function status(Request $request, string $orderId): JsonResponse
+    {
+        $recharge = Recharge::where('user_id', $request->user()->id)
+            ->where('order_id', $orderId)
+            ->first();
+
+        if (! $recharge) {
+            return $this->fail('Recharge not found.', 404);
+        }
+
+        if (in_array($recharge->status, ['processing', 'unknown'], true) && $this->credentials()) {
+            [$username, $password] = $this->credentials();
+            try {
+                $response = Http::connectTimeout(10)->timeout(30)->get(self::STATUS_URL, [
+                    'username' => $username,
+                    'pwd' => $password,
+                    'orderid' => $recharge->order_id,
+                    'format' => 'json',
+                ]);
+                $providerData = json_decode($response->body(), true);
+
+                if ($response->successful() && is_array($providerData)) {
+                    $status = $this->providerStatus($providerData);
+                    $this->settle($recharge, $status, $this->providerFields($providerData, $status));
+                }
+            } catch (ConnectionException) {
+                // A1Topup na mile to purana status hi dikhao
+            }
+        }
+
+        return $this->existingResponse($recharge->fresh());
+    }
+
+    /**
+     * Recharge ka final hisaab. Ek recharge par sirf EK baar chalta hai (row lock).
+     *  success            -> withdrawal_balance + ANB, history mein 1 entry
+     *  failed             -> roka hua ANB balance mein wapas, koi history nahi
+     *  processing/unknown -> ANB ruka rahega
+     */
+    public function settle(Recharge $recharge, string $status, array $fields = []): void
+    {
+        try {
+            DB::transaction(function () use ($recharge, $status, $fields) {
+                $r = Recharge::whereKey($recharge->id)->lockForUpdate()->first();
+
+                // Pehle hi success / failed ho chuka -> kuch mat karo
+                if (! $r || ! in_array($r->status, ['processing', 'unknown'], true) || $r->refunded_at) {
+                    return;
+                }
+
+                $anb = (string) $r->getRawOriginal('anb_amount');
+                if (! preg_match('/^\d+(\.\d+)?$/', $anb)) {
+                    $r->update(['status' => 'unknown'] + $fields);
+
+                    return;
+                }
+
+                if ($status === 'success') {
+                    User::whereKey($r->user_id)->update([
+                        'withdrawal_balance' => DB::raw('withdrawal_balance + ' . $anb),
+                    ]);
+                    $balance = User::whereKey($r->user_id)->value('balance');
+
+                    WalletTransaction::create([
+                        'user_id' => $r->user_id,
+                        'type' => 'recharge',
+                        'wallet' => 'main',
+                        'amount' => '-' . $anb,
+                        'balance_after' => $balance,
+                        'reference' => $r->order_id,
+                        'description' => "Recharge {$r->number} ₹" . $r->getRawOriginal('amount'),
+                    ]);
+
+                    $r->update(['status' => 'success'] + $fields);
+                } elseif ($status === 'failed') {
+                    User::whereKey($r->user_id)->update([
+                        'balance' => DB::raw('balance + ' . $anb),
+                    ]);
+
+                    $r->update(['status' => 'failed', 'refunded_at' => now()] + $fields);
+                } else {
+                    $r->update(['status' => $status === 'processing' ? 'processing' : 'unknown'] + $fields);
+                }
+            });
+        } catch (Throwable $e) {
+            // Hisaab fail hua to ANB ruka rahega (status processing/unknown), status API baad mein theek karegi
+            Log::error('Recharge settle failed', ['recharge_id' => $recharge->id, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * ₹ amount ke liye kitne ANB (8 decimal, upar ki taraf round, taaki company ko ghata na ho).
      * Jaise ₹199 / 4.425 = 44.97175141... -> 44.97175142
      */
@@ -213,59 +290,26 @@ class RechargeController extends Controller
         return $anb;
     }
 
-    /**
-     * Recharge fail hua: balance wapas, withdrawal_balance se utna kam.
-     * Do baar call ho jaaye to bhi sirf ek baar refund hoga (refunded_at).
-     */
-    public function refundAnb(Recharge $recharge): void
+    /** @return array{0:string,1:string}|null */
+    private function credentials(): ?array
     {
-        DB::transaction(function () use ($recharge) {
-            $r = Recharge::whereKey($recharge->id)->lockForUpdate()->first();
-            if (! $r || $r->refunded_at || ! $r->anb_amount) {
-                return;
-            }
+        $username = config('ultrapay.a1topup_username');
+        $password = config('ultrapay.a1topup_password');
 
-            $anb = (string) $r->getRawOriginal('anb_amount');
-            if (! preg_match('/^\d+(\.\d+)?$/', $anb)) {
-                return;
-            }
+        if (! is_string($username) || $username === '' || ! is_string($password) || $password === '') {
+            return null;
+        }
 
-            User::whereKey($r->user_id)->update([
-                'balance' => DB::raw('balance + ' . $anb),
-                'withdrawal_balance' => DB::raw('GREATEST(withdrawal_balance - ' . $anb . ', 0)'),
-            ]);
-            $user = User::whereKey($r->user_id)->first(['balance', 'withdrawal_balance']);
-
-            WalletTransaction::create([
-                'user_id' => $r->user_id,
-                'type' => 'recharge_refund',
-                'wallet' => 'main',
-                'amount' => $anb,
-                'balance_after' => $user->balance,
-                'reference' => $r->order_id,
-                'description' => 'Recharge failed: ANB refunded',
-            ]);
-            WalletTransaction::create([
-                'user_id' => $r->user_id,
-                'type' => 'recharge_refund',
-                'wallet' => 'withdrawal',
-                'amount' => '-' . $anb,
-                'balance_after' => $user->withdrawal_balance,
-                'reference' => $r->order_id,
-                'description' => 'Recharge failed: ANB refunded',
-            ]);
-
-            $r->update(['refunded_at' => now()]);
-        });
+        return [$username, $password];
     }
 
     private function ensureSameRequest(Recharge $recharge, Request $request, array $data): void
     {
         $sameRequest = $recharge->user_id === $request->user()->id
             && $recharge->number === $data['number']
-            && $recharge->circle_code === $data['circle_code']
+            && ($recharge->circle_code ?: null) === ($data['circle_code'] ?: null)
             && $recharge->operator_code === $data['operator_code']
-            && (float) $recharge->amount === (float) $data['amount'];
+            && (float) $recharge->getRawOriginal('amount') === (float) $data['amount'];
 
         abort_unless($sameRequest, 409, 'This order ID has already been used for a different request.');
     }
@@ -283,20 +327,33 @@ class RechargeController extends Controller
         $status = in_array($recharge->status, ['processing', 'unknown'], true)
             ? 'pending'
             : $recharge->status;
+
         $message = match ($status) {
             'success' => 'Recharge successful.',
-            'failed' => $recharge->provider_message
-                ?: 'Recharge failed: ' . ($recharge->provider_status ?: 'The provider rejected the request.'),
-            default => 'The recharge status is not confirmed yet. Retry with the same order ID; do not create a new order.',
+            'failed' => 'Recharge failed. Your ANB has been returned to your wallet.'
+                . ($recharge->provider_message ? ' (' . $recharge->provider_message . ')' : ''),
+            default => 'The recharge status is not confirmed yet. Please check again in a few minutes.',
         };
 
         return $this->ok($message, [
             'order_id' => $recharge->order_id,
             'status' => $status,
             'number' => $recharge->number,
-            'amount' => $recharge->amount,
+            'amount' => $recharge->getRawOriginal('amount'),
+            'anb_amount' => $recharge->getRawOriginal('anb_amount'),
             'provider_reference' => $recharge->provider_reference,
+            'created_at' => $recharge->created_at?->timezone('Asia/Kolkata')->toIso8601String(),
+            'created_at_text' => $recharge->created_at?->timezone('Asia/Kolkata')->format('d M Y, h:i A'),
         ], $httpStatus);
+    }
+
+    private function providerFields(array $data, string $status): array
+    {
+        return [
+            'provider_status' => $this->providerStatusValue($data),
+            'provider_reference' => $this->providerReference($data),
+            'provider_message' => $this->providerMessage($data, $status),
+        ];
     }
 
     private function providerStatus(array $data): string
@@ -309,8 +366,16 @@ class RechargeController extends Controller
         }
 
         $status = Str::lower(trim((string) ($data['status'] ?? '')));
-        $successList = array_map('strtolower', (array) config('ultrapay.a1topup_success_statuses', []));
-        $failureList = array_map('strtolower', (array) config('ultrapay.a1topup_failure_statuses', []));
+
+        // A1Topup: "Success" / "Failure" / "Pending"
+        $successList = array_map('strtolower', array_merge(
+            ['success', 'successful'],
+            (array) config('ultrapay.a1topup_success_statuses', [])
+        ));
+        $failureList = array_map('strtolower', array_merge(
+            ['failure', 'failed', 'fail'],
+            (array) config('ultrapay.a1topup_failure_statuses', [])
+        ));
 
         if (in_array($status, $successList, true)) {
             return 'success';
@@ -335,7 +400,7 @@ class RechargeController extends Controller
     private function providerReference(array $data): ?string
     {
         foreach (['txid', 'transaction_id', 'refid'] as $key) {
-            if (isset($data[$key]) && is_scalar($data[$key])) {
+            if (isset($data[$key]) && is_scalar($data[$key]) && (string) $data[$key] !== '') {
                 return Str::limit((string) $data[$key], 100, '');
             }
         }
