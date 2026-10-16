@@ -28,6 +28,7 @@ class User extends Authenticatable
             'pin_locked_until' => 'datetime',
             'last_login_at' => 'datetime',
             'balance' => 'decimal:8',
+            'withdrawal_balance' => 'decimal:8',
         ];
     }
 

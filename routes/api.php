@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\PinController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Middleware\ForceJsonResponse;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\RateController;
 
 Route::middleware(ForceJsonResponse::class)->group(function () {
 
@@ -21,7 +22,11 @@ Route::middleware(ForceJsonResponse::class)->group(function () {
     Route::post('/password/forgot', [PasswordController::class, 'forgot'])->middleware('throttle:5,1');
     Route::post('/password/verify-otp', [PasswordController::class, 'verifyOtp'])->middleware('throttle:10,1');
     Route::post('/password/reset', [PasswordController::class, 'reset'])->middleware('throttle:5,1');
-
+    
+        // ---------- ANB rate (bina login bhi dikh sakta hai) ----------
+    Route::get('/rate', [RateController::class, 'current']);
+    Route::get('/rate/history', [RateController::class, 'history']);
+    
     // ---------- Login ke baad (Bearer token) ----------
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/me', [AuthController::class, 'me']);

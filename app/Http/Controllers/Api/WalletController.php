@@ -9,6 +9,7 @@ use App\Services\DepositService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
+use App\Models\CoinRate;
 use App\Services\DepositScanner;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
@@ -18,9 +19,15 @@ class WalletController extends Controller
     use ApiResponse;
 
     /** GET /api/wallet  -> balance + last 20 transactions */
+       /** GET /api/wallet  -> balance (ANB + INR + USDT) + last 20 transactions */
+       /** GET /api/wallet  -> balance (ANB + INR) + last 20 transactions */
     public function wallet(Request $request): JsonResponse
     {
         $user = $request->user()->fresh();
+        $balance = (string) $user->balance;          // users table se ANB balance
+        $withdrawable = (string) $user->withdrawal_balance;
+        $rate = CoinRate::current(); 
+        $usdtbalance =$balance * $rate->usdt_inr;                // coin_rates table se current rate
 
         $txns = WalletTransaction::where('user_id', $user->id)
             ->latest('id')
@@ -29,8 +36,12 @@ class WalletController extends Controller
             ->map->toApi();
 
         return $this->ok('Wallet details.', [
-            'balance' => $user->balance,
+            'balance' => $balance,                                       // ANB
+            'balance_inr' => $rate ? $rate->anbToInr($balance) : null,   // ₹
+            'balance_usdt' => $usdtbalance , // USDT
+            'withdrawable' => $withdrawable,  
             'currency' => 'ANB',
+            'rate' => $rate?->toApi(),
             'transactions' => $txns,
         ]);
     }
