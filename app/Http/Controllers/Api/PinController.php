@@ -34,8 +34,8 @@ class PinController extends Controller
             'old_pin' => ['required', "digits:{$len}"],
             'pin' => ['required', "digits:{$len}", 'confirmed', 'different:old_pin'],
         ], [
-            'pin.confirmed' => 'Dono naye PIN match nahi kar rahe.',
-            'pin.different' => 'Naya PIN purane se alag hona chahiye.',
+            'pin.confirmed' => 'The new PINs do not match.',
+            'pin.different' => 'The new PIN must be different from the current PIN.',
         ]);
 
         $user = $request->user();
@@ -46,7 +46,7 @@ class PinController extends Controller
 
         $user->update(['pin' => $data['pin']]);
 
-        return response()->json(['success' => true, 'message' => 'PIN badal gaya.']);
+        return response()->json(['success' => true, 'message' => 'PIN changed successfully.']);
     }
 
     /**
@@ -61,7 +61,7 @@ class PinController extends Controller
         if ($user->isPinLocked()) {
             $mins = (int) ceil(now()->diffInMinutes($user->pin_locked_until));
 
-            return [false, "PIN lock hai. {$mins} minute baad try karein.", 423];
+            return [false, "Your PIN is locked. Please try again in {$mins} minutes.", 423];
         }
 
         if (! Hash::check($pin, $user->pin)) {
@@ -74,18 +74,18 @@ class PinController extends Controller
                     'pin_locked_until' => now()->addMinutes(config('ultrapay.pin_lock_minutes')),
                 ]);
 
-                return [false, 'Bahut galat PIN. Wallet ' . config('ultrapay.pin_lock_minutes') . ' minute ke liye lock.', 423];
+                return [false, 'Too many incorrect PIN attempts. Your wallet is locked for ' . config('ultrapay.pin_lock_minutes') . ' minutes.', 423];
             }
 
             $left = $max - $user->pin_attempts;
 
-            return [false, "Galat PIN. {$left} try baaki.", 422];
+            return [false, "Incorrect PIN. {$left} attempts remaining.", 422];
         }
 
         if ($user->pin_attempts > 0) {
             $user->update(['pin_attempts' => 0]);
         }
 
-        return [true, 'PIN sahi hai.', 200];
+        return [true, 'PIN verified successfully.', 200];
     }
 }

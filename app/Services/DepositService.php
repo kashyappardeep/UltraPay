@@ -45,7 +45,7 @@ class DepositService
             }
         }
 
-        throw new RuntimeException('Abhi deposit request nahi ban paayi. Thodi der baad try karein.');
+        throw new RuntimeException('Could not create the deposit request. Please try again later.');
     }
 
     /** Blockchain se aaya ek transfer. Match hua to balance badhao. Do baar credit kabhi nahi. */

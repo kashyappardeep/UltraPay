@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\WalletController;
 use App\Http\Middleware\ForceJsonResponse;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\RateController;
+use App\Http\Controllers\Api\PinResetController;
 
 Route::middleware(ForceJsonResponse::class)->group(function () {
 
@@ -35,6 +36,11 @@ Route::middleware(ForceJsonResponse::class)->group(function () {
 
         Route::post('/pin/verify', [PinController::class, 'verify'])->middleware('throttle:10,1');
         Route::post('/pin/change', [PinController::class, 'change'])->middleware('throttle:5,1');
+
+                // Forgot PIN (email OTP)
+        Route::post('/pin/forgot', [PinResetController::class, 'forgot'])->middleware('throttle:5,1');
+        Route::post('/pin/verify-otp', [PinResetController::class, 'verifyOtp'])->middleware('throttle:10,1');
+        Route::post('/pin/reset', [PinResetController::class, 'reset'])->middleware('throttle:5,1');
 
         // Wallet + Add fund
         Route::get('/wallet', [WalletController::class, 'wallet']);

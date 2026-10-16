@@ -17,6 +17,7 @@ class OtpService
 {
     public const REGISTER = 'register';
     public const RESET = 'reset';
+    public const PIN_RESET = 'pin_reset';
 
     /** @return int  OTP kitne second mein expire hoga */
     public function send(string $email, string $purpose): int
@@ -26,7 +27,7 @@ class OtpService
         $last = Otp::where('email', $email)->where('purpose', $purpose)->latest('id')->first();
         if ($last && $last->created_at->diffInSeconds(now()) < $wait) {
             $left = (int) ceil($wait - $last->created_at->diffInSeconds(now()));
-            throw new OtpException("OTP dobara bhejne ke liye {$left} second rukein.", 429);
+            throw new OtpException("Please wait {$left} seconds before requesting another OTP.", 429);
         }
 
         $minutes = config('ultrapay.otp_expiry_minutes');
@@ -49,7 +50,7 @@ class OtpService
             } catch (Throwable $e) {
                 $otp->delete();
                 Log::error('OTP email fail', ['error' => $e->getMessage()]);
-                throw new OtpException('Email nahi bhej paaye. Thodi der baad try karein.', 500);
+                throw new OtpException('Could not send the email. Please try again later.', 500);
             }
         }
 
@@ -66,19 +67,19 @@ class OtpService
             ->first();
 
         if (! $otp) {
-            throw new OtpException('Pehle OTP mangwayein.');
+            throw new OtpException('Please request an OTP first.');
         }
         if ($otp->isExpired()) {
-            throw new OtpException('OTP expire ho gaya. Naya OTP mangwayein.');
+            throw new OtpException('The OTP has expired. Please request a new one.');
         }
         if ($otp->attempts >= config('ultrapay.otp_max_attempts')) {
-            throw new OtpException('Bahut galat try. Naya OTP mangwayein.', 429);
+            throw new OtpException('Too many incorrect attempts. Please request a new OTP.', 429);
         }
 
         if (! Hash::check($code, $otp->otp)) {
             $otp->increment('attempts');
             $left = config('ultrapay.otp_max_attempts') - $otp->attempts;
-            throw new OtpException("Galat OTP. {$left} try baaki.");
+            throw new OtpException("Incorrect OTP. {$left} attempts remaining.");
         }
 
         $otp->update(['verified_at' => now()]);
