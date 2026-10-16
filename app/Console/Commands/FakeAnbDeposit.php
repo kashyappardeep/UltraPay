@@ -12,19 +12,19 @@ class FakeAnbDeposit extends Command
 {
     protected $signature = 'anb:fake-deposit {id : deposit request id}';
 
-    protected $description = 'Testing: kisi deposit request ka payment aaya hua maan lo (sirf local)';
+    protected $description = 'Testing: simulate a payment received for a deposit request (local only)';
 
     public function handle(DepositService $deposits): int
     {
         if (! app()->isLocal()) {
-            $this->error('Ye command sirf APP_ENV=local mein chalti hai.');
+            $this->error('This command only runs when APP_ENV=local.');
 
             return self::FAILURE;
         }
 
         $req = DepositRequest::find($this->argument('id'));
         if (! $req) {
-            $this->error('Deposit request nahi mili.');
+            $this->error('Deposit request not found.');
 
             return self::FAILURE;
         }

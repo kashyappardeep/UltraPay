@@ -23,6 +23,11 @@ Route::middleware(ForceJsonResponse::class)->group(function () {
     Route::post('/password/forgot', [PasswordController::class, 'forgot'])->middleware('throttle:5,1');
     Route::post('/password/verify-otp', [PasswordController::class, 'verifyOtp'])->middleware('throttle:10,1');
     Route::post('/password/reset', [PasswordController::class, 'reset'])->middleware('throttle:5,1');
+
+    // ---------- Forgot PIN (bina login: email -> OTP -> naya PIN) ----------
+    Route::post('/pin/forgot', [PinController::class, 'forgot'])->middleware('throttle:5,1');
+    Route::post('/pin/verify-otp', [PinController::class, 'verifyOtp'])->middleware('throttle:10,1');
+    Route::post('/pin/reset', [PinController::class, 'reset'])->middleware('throttle:5,1');
     
         // ---------- ANB rate (bina login bhi dikh sakta hai) ----------
     Route::get('/rate', [RateController::class, 'current']);

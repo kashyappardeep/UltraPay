@@ -27,10 +27,10 @@ class PasswordController extends Controller
 
         $user = User::where('email', $email)->first();
         if (! $user) {
-            return $this->fail('Ye email registered nahi hai.', 404);
+            return $this->fail('This email is not registered.', 404);
         }
         if (! $user->isActive()) {
-            return $this->fail('Ye account block hai. Support se sampark karein.', 403);
+            return $this->fail('This account is blocked. Please contact support.', 403);
         }
 
         try {
@@ -39,7 +39,7 @@ class PasswordController extends Controller
             return $this->fail($e->getMessage(), $e->status);
         }
 
-        return $this->ok('Password reset ka OTP aapke email par bhej diya gaya.', [
+        return $this->ok('A password reset OTP has been sent to your email.', [
             'email' => $email,
             'expires_in_seconds' => $expires,
         ]);
@@ -55,7 +55,7 @@ class PasswordController extends Controller
         $email = strtolower(trim($data['email']));
 
         if (! User::where('email', $email)->exists()) {
-            return $this->fail('Ye email registered nahi hai.', 404);
+            return $this->fail('This email is not registered.', 404);
         }
 
         try {
@@ -71,7 +71,7 @@ class PasswordController extends Controller
             now()->addMinutes(15)
         );
 
-        return $this->ok('OTP sahi hai. Ab naya password set karein.', [
+        return $this->ok('The OTP is correct. Please set a new password.', [
             'reset_token' => $resetToken,
             'expires_in_seconds' => 15 * 60,
         ]);
@@ -84,21 +84,21 @@ class PasswordController extends Controller
             'reset_token' => ['required', 'string'],
             'password' => ['required', 'confirmed', Password::min(8)->letters()->numbers()],
         ], [
-            'password.confirmed' => 'Dono password match nahi kar rahe.',
+            'password.confirmed' => 'The passwords do not match.',
         ]);
 
         $cacheKey = 'reset_token:' . hash('sha256', $data['reset_token']);
         $session = Cache::get($cacheKey);
         $email = is_array($session) ? ($session['email'] ?? null) : null;
         if (! $email) {
-            return $this->fail('Reset session expire ho gaya. Dobara OTP mangwayein.', 401);
+            return $this->fail('The reset session has expired. Please request a new OTP.', 401);
         }
 
         $user = User::where('email', $email)->first();
         if (! $user) {
             Cache::forget($cacheKey);
 
-            return $this->fail('Ye email registered nahi hai.', 404);
+            return $this->fail('This email is not registered.', 404);
         }
 
         $user->update(['password' => $data['password']]);   // model khud hash karega
@@ -107,6 +107,6 @@ class PasswordController extends Controller
         $user->tokens()->delete();
         Cache::forget($cacheKey);
 
-        return $this->ok('Password badal gaya. Ab naye password se login karein.');
+        return $this->ok('Password changed. Please log in with your new password.');
     }
 }

@@ -11,9 +11,9 @@ use Illuminate\Console\Command;
  */
 class SetCoinRate extends Command
 {
-    protected $signature = 'rate:set {usdt_rate : 1 ANB = kitne USDT} {usdt_inr? : 1 USDT = kitne INR} {--note=}';
+    protected $signature = 'rate:set {usdt_rate : 1 ANB = how many USDT} {usdt_inr? : 1 USDT = how many INR} {--note=}';
 
-    protected $description = 'ANB coin ka USDT aur INR rate set karo';
+    protected $description = 'Set the USDT and INR rate for the ANB coin';
 
     public function handle(): int
     {
@@ -23,7 +23,7 @@ class SetCoinRate extends Command
         if ($usdtInr === null) {
             $last = CoinRate::current();
             if (! $last) {
-                $this->error('Pehli baar dono rate dein. Jaise: php artisan rate:set 0.05 88.50');
+                $this->error('Provide both rates the first time. E.g.: php artisan rate:set 0.05 88.50');
 
                 return self::FAILURE;
             }
@@ -31,7 +31,7 @@ class SetCoinRate extends Command
         }
 
         if (! is_numeric($usdtRate) || (float) $usdtRate <= 0 || ! is_numeric($usdtInr) || (float) $usdtInr <= 0) {
-            $this->error('Rate 0 se bada number hona chahiye.');
+            $this->error('The rate must be a number greater than 0.');
 
             return self::FAILURE;
         }
@@ -45,7 +45,7 @@ class SetCoinRate extends Command
             'note' => $this->option('note'),
         ]);
 
-        $this->info('Naya rate set ho gaya:');
+        $this->info('New rate set:');
         $this->line("  1 ANB  = {$rate->usdt_rate} USDT");
         $this->line("  1 USDT = {$rate->usdt_inr} INR");
         $this->line("  1 ANB  = {$rate->inr_rate} INR");

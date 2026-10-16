@@ -20,9 +20,11 @@ class OtpMail extends Mailable
 
     public function envelope(): Envelope
     {
-        $subject = $this->purpose === 'reset'
-            ? 'UltraPay password reset code'
-            : 'Aapka UltraPay verification code';
+        $subject = match ($this->purpose) {
+            'reset' => 'UltraPay password reset code',
+            'pin_reset' => 'UltraPay PIN reset code',
+            default => 'Your UltraPay verification code',
+        };
 
         return new Envelope(subject: $subject);
     }

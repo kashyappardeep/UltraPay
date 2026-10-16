@@ -16,7 +16,7 @@ class CheckAnbTx extends Command
 {
     protected $signature = 'anb:check-tx {hash} {--credit}';
 
-    protected $description = 'Ek tx hash blockchain se padh ke batao ki ANB deposit match hota hai ya nahi';
+    protected $description = 'Read a tx hash from the blockchain and check whether it matches an ANB deposit';
 
     private const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
@@ -33,7 +33,7 @@ class CheckAnbTx extends Command
         $receipt = $res->json('result');
 
         if (! $receipt) {
-            $this->error('Transaction nahi mila. Hash sahi hai? Network BSC hai? RPC: ' . $anb['rpc_url']);
+            $this->error('Transaction not found. Is the hash correct? Is the network BSC? RPC: ' . $anb['rpc_url']);
 
             return self::FAILURE;
         }
@@ -59,10 +59,10 @@ class CheckAnbTx extends Command
             $toOk = $to === $anb['company_address'];
 
             $this->line("Transfer log #" . hexdec($log['logIndex']));
-            $this->line("  Token  : {$token}  " . ($tokenOk ? '✔ match' : '✘ ALAG TOKEN'));
+            $this->line("  Token  : {$token}  " . ($tokenOk ? '✔ match' : '✘ DIFFERENT TOKEN'));
             $this->line("  From   : {$from}");
-            $this->line("  To     : {$to}  " . ($toOk ? '✔ match' : '✘ company address nahi'));
-            $this->line("  Amount : {$amount} (decimals {$anb['decimals']} maan ke)");
+            $this->line("  To     : {$to}  " . ($toOk ? '✔ match' : '✘ not the company address'));
+            $this->line("  Amount : {$amount} (assuming decimals {$anb['decimals']})");
 
             if ($tokenOk && $toOk) {
                 $found = true;
@@ -81,7 +81,7 @@ class CheckAnbTx extends Command
         }
 
         if (! $found) {
-            $this->warn('Is tx mein config wale token se company address par koi transfer nahi mila.');
+            $this->warn('No transfer to the company address from the configured token was found in this tx.');
         }
 
         return self::SUCCESS;

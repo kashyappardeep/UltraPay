@@ -28,7 +28,7 @@ class RateController extends Controller
         $rate = CoinRate::current();
         $inrRate = $rate?->inr_rate;
         if ($inrRate === null || $inrRate === '' || $inrRate === 0 || $inrRate === '0') {
-            return $this->fail('ANB ka rate abhi set nahi hua hai.', 503);
+            return $this->fail('The ANB rate has not been set yet.', 503);
         }
 
         $result = ['rate' => $rate->toApi()];
@@ -42,7 +42,7 @@ class RateController extends Controller
             $result['convert'] = ['usdt' => (string) $data['usdt'], 'anb' => $rate->usdtToAnb((string) $data['usdt'])];
         }
 
-        return $this->ok('ANB ka current rate.', $result);
+        return $this->ok('Current ANB rate.', $result);
     }
 
     /** GET /api/rate/history -> pichle 30 rate badlaav */

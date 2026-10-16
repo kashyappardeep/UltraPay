@@ -22,7 +22,7 @@ class RechargeController extends Controller
 
        public function store(Request $request): JsonResponse
     {
-        abort_unless($request->user()->isActive(), 403, 'Ye account recharge ke liye active nahi hai.');
+        abort_unless($request->user()->isActive(), 403, 'This account is not active for recharge.');
 
         $data = $request->validate([
             'order_id' => ['required', 'string', 'alpha_dash', 'min:6', 'max:64'],
@@ -31,21 +31,21 @@ class RechargeController extends Controller
             'operator_code' => ['required', 'string', 'max:50'],
             'amount' => ['required', 'numeric', 'decimal:0,2', 'min:10', 'max:10000'],
         ], [
-            'number.regex' => 'Sahi 10 digit mobile number daalein.',
-            'amount.decimal' => 'Recharge amount mein zyada se zyada 2 decimal places ho sakte hain.',
+            'number.regex' => 'Please enter a valid 10-digit mobile number.',
+            'amount.decimal' => 'The recharge amount can have at most 2 decimal places.',
         ]);
 
         $username = config('ultrapay.a1topup_username');
         $password = config('ultrapay.a1topup_password');
         if (! is_string($username) || $username === '' || ! is_string($password) || $password === '') {
-            return $this->fail('Recharge service abhi configure nahi hai.', 503);
+            return $this->fail('The recharge service is not configured yet.', 503);
         }
 
         // 1) Current rate se ANB nikalo
         $rate = CoinRate::current();
         $inrRate = $rate?->inr_rate;
         if ($inrRate === null || $inrRate === '' || $inrRate === 0 || $inrRate === '0') {
-            return $this->fail('ANB ka rate abhi set nahi hai. Thodi der baad try karein.', 503);
+            return $this->fail('The ANB rate has not been set yet. Please try again later.', 503);
         }
         $anbAmount = $this->anbForInr((string) $data['amount'], (string) $rate->inr_rate);
 
@@ -116,7 +116,7 @@ class RechargeController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Insufficient balance. Is recharge ke liye ' . $anbAmount . ' ANB chahiye.',
+                'message' => 'Insufficient balance. This recharge requires ' . $anbAmount . ' ANB.',
                 'data' => [
                     'required_anb' => $anbAmount,
                     'balance' => $balance,
@@ -207,7 +207,7 @@ class RechargeController extends Controller
         }
 
         if (! preg_match('/^\d+\.\d{8}$/', $anb)) {
-            throw new RuntimeException('ANB amount calculate nahi ho paaya.');
+            throw new RuntimeException('Could not calculate the ANB amount.');
         }
 
         return $anb;
@@ -243,7 +243,7 @@ class RechargeController extends Controller
                 'amount' => $anb,
                 'balance_after' => $user->balance,
                 'reference' => $r->order_id,
-                'description' => 'Recharge fail: ANB wapas',
+                'description' => 'Recharge failed: ANB refunded',
             ]);
             WalletTransaction::create([
                 'user_id' => $r->user_id,
@@ -252,7 +252,7 @@ class RechargeController extends Controller
                 'amount' => '-' . $anb,
                 'balance_after' => $user->withdrawal_balance,
                 'reference' => $r->order_id,
-                'description' => 'Recharge fail: ANB wapas',
+                'description' => 'Recharge failed: ANB refunded',
             ]);
 
             $r->update(['refunded_at' => now()]);
@@ -267,7 +267,7 @@ class RechargeController extends Controller
             && $recharge->operator_code === $data['operator_code']
             && (float) $recharge->amount === (float) $data['amount'];
 
-        abort_unless($sameRequest, 409, 'Order ID pehle se kisi doosri request ke liye istemal hua hai.');
+        abort_unless($sameRequest, 409, 'This order ID has already been used for a different request.');
     }
 
     private function existingResponse(Recharge $recharge): JsonResponse
@@ -286,8 +286,8 @@ class RechargeController extends Controller
         $message = match ($status) {
             'success' => 'Recharge successful.',
             'failed' => $recharge->provider_message
-                ?: 'Recharge failed: ' . ($recharge->provider_status ?: 'Provider ne reject kiya.'),
-            default => 'Recharge ka status abhi confirm nahi hua. Isi order ID ko dobara bhejein; naya order na banayein.',
+                ?: 'Recharge failed: ' . ($recharge->provider_status ?: 'Rejected by the provider.'),
+            default => 'The recharge status is not confirmed yet. Resend the same order ID; do not create a new order.',
         };
 
         return $this->ok($message, [

@@ -51,14 +51,14 @@ class WalletController extends Controller
     {
         $anb = config('ultrapay.anb');
         if (! $anb['company_address'] || ! $anb['token_contract']) {
-            return $this->fail('Deposit abhi band hai. Thodi der baad try karein.', 503);
+            return $this->fail('Deposits are currently disabled. Please try again later.', 503);
         }
 
         $data = $request->validate([
             'amount' => ['required', 'regex:/^\d{1,12}(\.\d{1,2})?$/', 'numeric', 'min:' . $anb['min_deposit']],
         ], [
-            'amount.regex' => 'Amount sahi daalein (zyada se zyada 2 decimal).',
-            'amount.min' => 'Kam se kam ' . $anb['min_deposit'] . ' ANB deposit karein.',
+            'amount.regex' => 'Please enter a valid amount (up to 2 decimal places).',
+            'amount.min' => 'Please deposit a minimum of ' . $anb['min_deposit'] . ' ANB.',
         ]);
 
         try {
@@ -70,7 +70,7 @@ class WalletController extends Controller
         $info = $deposit->toApi();
 
         return $this->ok(
-            "Company address par EXACT {$info['amount_to_send']} ANB bhejein. Thoda bhi kam ya zyada bheja to automatic add nahi hoga.",
+            "Send EXACTLY {$info['amount_to_send']} ANB to the company address. If you send even slightly less or more, it will not be added automatically.",
             ['deposit' => $info],
             201
         );
@@ -85,7 +85,7 @@ class WalletController extends Controller
     {
         $deposit = DepositRequest::where('user_id', $request->user()->id)->find($id);
         if (! $deposit) {
-            return $this->fail('Deposit request nahi mili.', 404);
+            return $this->fail('Deposit request not found.', 404);
         }
 
         // Turant check: latest N block scan (poore server par 5 second mein max ek baar)
@@ -99,10 +99,10 @@ class WalletController extends Controller
         }
 
         $message = match ($deposit->displayStatus()) {
-            'completed' => 'Payment mil gaya. ' . rtrim(rtrim((string) $deposit->amount_received, '0'), '.') . ' ANB balance mein add ho gaya.',
-            'timeout' => 'Timer khatam ho gaya. Agar aapne payment bhej diya hai to wo 24 ghante tak automatic add ho jaayega.',
-            'expired' => 'Ye deposit request band ho chuki hai.',
-            default => 'Payment ka intezaar hai. Bhejte hi kuch second mein balance mein add ho jaayega.',
+            'completed' => 'Payment received. ' . rtrim(rtrim((string) $deposit->amount_received, '0'), '.') . ' ANB has been added to your balance.',
+            'timeout' => 'The timer has ended. If you have already sent the payment, it will be added automatically within 24 hours.',
+            'expired' => 'This deposit request is now closed.',
+            default => 'Waiting for payment. It will be added to your balance within seconds of sending.',
         };
 
         $data = ['deposit' => $deposit->toApi()];

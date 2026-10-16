@@ -45,7 +45,7 @@ class DepositService
             }
         }
 
-        throw new RuntimeException('Abhi deposit request nahi ban paayi. Thodi der baad try karein.');
+        throw new RuntimeException('Could not create the deposit request right now. Please try again later.');
     }
 
     /** Blockchain se aaya ek transfer. Match hua to balance badhao. Do baar credit kabhi nahi. */
@@ -82,7 +82,7 @@ class DepositService
             }
 
             if (! $request) {
-                Log::warning('ANB deposit match nahi hua', $t);
+                Log::warning('ANB deposit did not match any request', $t);
 
                 return 'unmatched';
             }

@@ -11,13 +11,13 @@ class ScanAnbDeposits extends Command
 {
     protected $signature = 'anb:scan-deposits';
 
-    protected $description = 'Company address par aaye ANB deposits check karke balance mein add karo';
+    protected $description = 'Check ANB deposits received at the company address and add them to balances';
 
     public function handle(DepositScanner $scanner): int
     {
         $anb = config('ultrapay.anb');
         if (! $anb['token_contract'] || ! $anb['company_address']) {
-            $this->error('ANB_TOKEN_CONTRACT aur ANB_COMPANY_ADDRESS set karein.');
+            $this->error('Set ANB_TOKEN_CONTRACT and ANB_COMPANY_ADDRESS.');
 
             return self::FAILURE;
         }
@@ -32,7 +32,7 @@ class ScanAnbDeposits extends Command
         }
 
         if ($result === null) {
-            $this->warn('Doosra scan pehle se chal raha hai. Skip.');
+            $this->warn('Another scan is already running. Skipping.');
 
             return self::SUCCESS;
         }
@@ -40,7 +40,7 @@ class ScanAnbDeposits extends Command
         foreach ($result['lines'] as $line) {
             $this->line($line);
         }
-        $this->info("Block {$result['last_block']} tak scan ho gaya. {$result['credited']} deposit credit hue.");
+        $this->info("Scanned up to block {$result['last_block']}. {$result['credited']} deposit(s) credited.");
 
         return self::SUCCESS;
     }

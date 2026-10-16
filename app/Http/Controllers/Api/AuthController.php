@@ -28,7 +28,7 @@ class AuthController extends Controller
         $email = $this->cleanEmail($data['email']);
 
         if (User::where('email', $email)->exists()) {
-            return $this->fail('Ye email pehle se registered hai. Login karein.', 409);
+            return $this->fail('This email is already registered. Please log in.', 409);
         }
 
         try {
@@ -37,7 +37,7 @@ class AuthController extends Controller
             return $this->fail($e->getMessage(), $e->status);
         }
 
-        return $this->ok('OTP aapke email par bhej diya gaya.', [
+        return $this->ok('OTP sent to your email.', [
             'email' => $email,
             'expires_in_seconds' => $expires,
         ]);
@@ -53,7 +53,7 @@ class AuthController extends Controller
         $email = $this->cleanEmail($data['email']);
 
         if (User::where('email', $email)->exists()) {
-            return $this->fail('Ye email pehle se registered hai. Login karein.', 409);
+            return $this->fail('This email is already registered. Please log in.', 409);
         }
 
         try {
@@ -69,7 +69,7 @@ class AuthController extends Controller
             now()->addMinutes(config('ultrapay.registration_token_minutes'))
         );
 
-        return $this->ok('Email verify ho gaya. Ab registration poora karein.', [
+        return $this->ok('Email verified. Please complete your registration.', [
             'registration_token' => $regToken,
             'email' => $email,
             'expires_in_seconds' => config('ultrapay.registration_token_minutes') * 60,
@@ -94,28 +94,28 @@ class AuthController extends Controller
             'referral_code' => ['nullable', 'string', 'exists:users,referral_code'],
             'device_id' => ['nullable', 'string', 'max:255'],
         ], [
-            'mobile.regex' => 'Sahi 10 digit mobile number daalein.',
-            'mobile.unique' => 'Ye mobile number pehle se registered hai.',
-            'password.confirmed' => 'Dono password match nahi kar rahe.',
-            'pin.digits' => "PIN {$pinLen} digit ka hona chahiye.",
-            'pin.confirmed' => 'Dono PIN match nahi kar rahe.',
-            'referral_code.exists' => 'Referral code galat hai.',
+            'mobile.regex' => 'Please enter a valid 10-digit mobile number.',
+            'mobile.unique' => 'This mobile number is already registered.',
+            'password.confirmed' => 'The passwords do not match.',
+            'pin.digits' => "The PIN must be {$pinLen} digits long.",
+            'pin.confirmed' => 'The PINs do not match.',
+            'referral_code.exists' => 'Invalid referral code.',
         ]);
 
         if ($this->isWeakPin($data['pin'])) {
-            return $this->fail('PIN bahut aasaan hai (jaise 1111, 1234). Doosra PIN chunein.', 422);
+            return $this->fail('The PIN is too easy (like 1111, 1234). Please choose a different PIN.', 422);
         }
 
         $cacheKey = 'reg_token:' . hash('sha256', $data['registration_token']);
         $session = Cache::get($cacheKey);
         $email = is_array($session) ? ($session['email'] ?? null) : null;
         if (! $email) {
-            return $this->fail('Registration session expire ho gaya. Dobara OTP verify karein.', 401);
+            return $this->fail('The registration session has expired. Please verify the OTP again.', 401);
         }
         if (User::where('email', $email)->exists()) {
             Cache::forget($cacheKey);
 
-            return $this->fail('Ye email pehle se registered hai. Login karein.', 409);
+            return $this->fail('This email is already registered. Please log in.', 409);
         }
 
         $referrerId = isset($data['referral_code'])
@@ -143,7 +143,7 @@ class AuthController extends Controller
 
         Cache::forget($cacheKey);
 
-        return $this->ok('Registration ho gaya. UltraPay mein swagat hai!',
+        return $this->ok('Registration complete. Welcome to UltraPay!',
             $this->issueToken($user->fresh(), $data['device_id'] ?? null), 201);
     }
 
@@ -162,7 +162,7 @@ class AuthController extends Controller
         if (RateLimiter::tooManyAttempts($key, 5)) {
             $mins = (int) ceil(RateLimiter::availableIn($key) / 60);
 
-            return $this->fail("Bahut galat try. {$mins} minute baad login karein.", 429);
+            return $this->fail("Too many failed attempts. Please log in again after {$mins} minute(s).", 429);
         }
 
         $user = User::where('email', $email)->first();
@@ -170,15 +170,15 @@ class AuthController extends Controller
         if (! $user || ! Hash::check($data['password'], $user->password)) {
             RateLimiter::hit($key, 300);
 
-            return $this->fail('Email ya password galat hai.', 401);
+            return $this->fail('Incorrect email or password.', 401);
         }
         if (! $user->isActive()) {
-            return $this->fail('Ye account block hai. Support se sampark karein.', 403);
+            return $this->fail('This account is blocked. Please contact support.', 403);
         }
 
         RateLimiter::clear($key);
 
-        return $this->ok('Login ho gaya.', $this->issueToken($user, $data['device_id'] ?? null));
+        return $this->ok('Logged in.', $this->issueToken($user, $data['device_id'] ?? null));
     }
 
     /** GET /api/me  (Bearer token) */
@@ -192,7 +192,7 @@ class AuthController extends Controller
     {
         $request->user()->currentAccessToken()->delete();
 
-        return $this->ok('Logout ho gaya.');
+        return $this->ok('Logged out.');
     }
 
     // ---------------------------------------------------------------
