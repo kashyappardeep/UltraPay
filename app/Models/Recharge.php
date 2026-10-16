@@ -17,10 +17,17 @@ class Recharge extends Model
         'provider_status',
         'provider_reference',
         'provider_message',
+        'anb_amount', 
+        'anb_rate', 
+        'refunded_at',
     ];
 
     protected function casts(): array
     {
-        return ['amount' => 'decimal:2'];
+        return [
+            'amount' => 'decimal:2',
+            'anb_amount' => 'decimal:36,8',
+            'anb_rate' => 'decimal:30,10',
+        ];
     }
 }
