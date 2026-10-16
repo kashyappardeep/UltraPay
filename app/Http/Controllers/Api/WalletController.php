@@ -77,11 +77,10 @@ class WalletController extends Controller
             return $this->fail('Deposit request nahi mili.', 404);
         }
 
-        // Turant check (poore server par 8 second mein max ek baar, taaki RPC limit na lage)
-                // Turant check: sirf latest 100 block (poore server par 5 second mein max ek baar)
+        // Turant check: latest N block scan (poore server par 5 second mein max ek baar)
         if ($deposit->status === 'pending' && Cache::add('anb:quick_scan', 1, 5)) {
             try {
-                $scanner->scanRecent(100);
+                $scanner->scanRecent((int) config('ultrapay.anb.recent_scan_blocks', 1000));
             } catch (Throwable $e) {
                 report($e);   // RPC fail ho to bhi app ko jawab do, scheduler baad mein pakad lega
             }

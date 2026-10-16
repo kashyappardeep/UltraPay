@@ -143,7 +143,8 @@ class RechargeController extends Controller
             : $recharge->status;
         $message = match ($status) {
             'success' => 'Recharge successful.',
-            'failed' => $recharge->provider_message ?: 'Provider ne recharge reject kiya.',
+            'failed' => $recharge->provider_message
+                ?: 'Recharge failed: ' . ($recharge->provider_status ?: 'Provider ne reject kiya.'),
             default => 'Recharge ka status abhi confirm nahi hua. Isi order ID ko dobara bhejein; naya order na banayein.',
         };
 
@@ -158,18 +159,21 @@ class RechargeController extends Controller
 
     private function providerStatus(array $data): string
     {
-        if (($data['success'] ?? null) === true) {
+        if (($data['success'] ?? null) === true || ($data['success'] ?? null) === 'true') {
             return 'success';
         }
-        if (($data['success'] ?? null) === false) {
+        if (($data['success'] ?? null) === false || ($data['success'] ?? null) === 'false') {
             return 'failed';
         }
 
         $status = Str::lower(trim((string) ($data['status'] ?? '')));
-        if (in_array($status, config('ultrapay.a1topup_success_statuses', []), true)) {
+        $successList = array_map('strtolower', (array) config('ultrapay.a1topup_success_statuses', []));
+        $failureList = array_map('strtolower', (array) config('ultrapay.a1topup_failure_statuses', []));
+
+        if (in_array($status, $successList, true)) {
             return 'success';
         }
-        if (in_array($status, config('ultrapay.a1topup_failure_statuses', []), true)) {
+        if (in_array($status, $failureList, true)) {
             return 'failed';
         }
         if (in_array($status, ['pending', 'processing', 'in_progress'], true)) {
